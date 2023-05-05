@@ -24,19 +24,15 @@
 To run this tutorial, you need an account on Hopsworks. You can create a new account at  [app.hopsworks.ai](https://app.hopsworks.ai).
 In the notebook you will be prompted with a link to generate an API token to interact with your Hopsworks account.
 
-Also, you obviously need to have [streamlit](https://docs.streamlit.io/library/get-started/installation)  python library installed.
+Also, you are required to have some python library installed (See the `requirements.txt` inside this folder).
 
 
 ## Data
-You will parse weather data so you should get an API key from [VisualCrossing](https://www.visualcrossing.com/). You can use [this link](https://www.visualcrossing.com/weather-api).
+Citibike trip histories can be downloaded [here](https://s3.amazonaws.com/tripdata/index.html).
 
-#### Create an `.env` configuration file inside this directory where all the necessary environment variables will be stored:
+For weather parsing you will use a free [Open-Meteo](https://open-meteo.com/en/docs/air-quality-api) API that covers many places in the world (works by coordinates). 
 
-`WEATHER_API_KEY = "YOUR_API_KEY"`
-
-> If you done it after you run a notebook, restart the Python Kernel for this notebook (because `functions.py` does not have these variables in his namespace).
-
-![](images/api_keys_env_file.png)
+You don't need any registrations or API keys to use these APIs.
 
 ## Streamlit run
 To run streamlit app (after you have run all notebooks and already have required feature groups in Feature Store and model in Model Registry), simply type:

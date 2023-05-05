@@ -14,6 +14,21 @@ def print_fancy_header(text, font_size=22, color="#ff5f27"):
     res = f'<span style="color:{color}; font-size: {font_size}px;">{text}</span>'
     st.markdown(res, unsafe_allow_html=True )
 
+    
+def get_map(stations_info_df):
+    fig = px.scatter_mapbox(stations_info_df,
+                            lat="lat",
+                            lon="long",
+                            zoom=11.5,
+                            hover_name="station_name",
+                            size=[5] * len(selected_stations)
+                            # height=600,
+                            # width=700
+                            )
+
+    fig.update_layout(mapbox_style="open-street-map")
+    fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
+    return fig
 
 st.title('🚲 Citibike Usage Prediction 🚲')
 
@@ -28,7 +43,7 @@ project = hopsworks.login()
 fs = project.get_feature_store()
 st.write("✅ Logged in successfully!")
 
-@st.cache(allow_output_mutation=True, suppress_st_warning=True)
+@st.cache_data()
 def get_feature_view():
     st.write("Getting the Feature View...")
     feature_view = fs.get_feature_view(
@@ -45,9 +60,7 @@ feature_view = get_feature_view()
 
 st.write(36 * "-")
 print_fancy_header('\n☁️ Retriving training dataset and other data from Feature Store...')
-# I use @st.experimental_memo() instead of @st.cache() to cache retrieved data
-# because @st.cache has a lot of bugs
-@st.experimental_memo(suppress_st_warning=True)
+@st.cache_data()
 def get_data_from_feature_store():
     st.write("🏋️ Retrieving the Training Dataset...")
     training_data, _ = feature_view.get_training_data(1)
@@ -93,15 +106,26 @@ stations_info_dict_2 = stations_info_df.set_index("station_name").to_dict()
 stations_list_names = list(map(lambda x: stations_info_dict_1["station_name"][x], stations_list))
 
 st.write(36 * "-")
-print_fancy_header(text='\n🏙 Please select citibike stations to process...',
-                   font_size=24, color="#00FFFF")
 with st.form("stations_selection"):
-   selected_stations_names = st.multiselect(label='Choose any number of stations.',
+    print_fancy_header(text='\n🏙 Please select citibike stations to process...',
+                   font_size=22, color="#00FFFF")
+    selected_stations_names = st.multiselect(label='Choose any number of stations.',
                                             options=stations_list_names,
                                             # let the map show some point in NYC instead of blank screen
                                             default=stations_list_names[5])
-   # Every form must have a submit button.
-   submitted = st.form_submit_button("Submit")
+   
+    st.write(36 * "-")
+    print_fancy_header(text='\n🤖💬 How many days do you want me to Predict for each selected station?',
+                       font_size=22, color="#00FFFF")
+    HOW_MANY_DAYS_PREDICT = st.number_input(label='',
+                                            min_value=7,
+                                            max_value=1000,
+                                            step=1,
+                                            value=7)
+    HOW_MANY_DAYS_PREDICT = int(HOW_MANY_DAYS_PREDICT)
+
+    # Every form must have a submit button.
+    submitted = st.form_submit_button("Submit")
 
 selected_stations = list(map(lambda x: stations_info_dict_2["station_id"][x], selected_stations_names))
 
@@ -112,32 +136,8 @@ stations_info_df = stations_info_df[stations_info_df.station_id.isin(selected_st
 st.write(36 * "-")
 print_fancy_header('\n🗺 You have selected these stations:')
 st.write('💡 Try to click "view Fullscreen" button on the top right corner of widget.')
-def get_map(stations_info_df):
-    fig = px.scatter_mapbox(stations_info_df,
-                            lat="lat",
-                            lon="long",
-                            zoom=11.5,
-                            hover_name="station_name",
-                            size=[5] * len(selected_stations)
-                            # height=600,
-                            # width=700
-                            )
-
-    fig.update_layout(mapbox_style="open-street-map")
-    fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
-    return fig
 
 st.plotly_chart(get_map(stations_info_df))
-
-st.write(36 * "-")
-print_fancy_header(text='\n🤖💬 How many days do you want me to Predict for each selected station?',
-             font_size=24, color="#00FFFF")
-HOW_MANY_DAYS_PREDICT = st.number_input(label='',
-                                        min_value=7,
-                                        max_value=1000,
-                                        step=1,
-                                        value=7)
-HOW_MANY_DAYS_PREDICT = int(HOW_MANY_DAYS_PREDICT)
 
 st.write(36 * "-")
 print_fancy_header('\n🇺🇸 Getting US calendar for selected dates...')
@@ -182,9 +182,13 @@ for i in range(HOW_MANY_DAYS_PREDICT):
                    .drop(columns=["users_count"]).reset_index(drop=True)
 
     # get weather data for this specific day
-    weather_row = get_weather_data(city="nyc",
-                                   start_date=temp_date,
-                                   end_date=temp_date)
+    weather_row = get_weather_data_from_open_meteo(city_name="NYC",
+                                                   coordinates=[40.7128, -74.0060],
+                                                   start_date=temp_date,
+                                                   end_date=temp_date)
+
+    weather_row.date = weather_row.date.astype(str)
+    
     weather_cols = weather_row.loc[weather_row.index.repeat(agg_cols.shape[0])] \
                                   .reset_index(drop=True).drop(columns=["date"])
 

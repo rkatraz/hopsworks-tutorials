@@ -8,14 +8,11 @@ import os
 import json
 from calendar import monthrange
 import pandas as pd
+import time
 
 # Mute warnings
 import warnings
 warnings.filterwarnings("ignore")
-
-from dotenv import load_dotenv
-load_dotenv()
-
 
 ###############################################################################
 # Basic functions
@@ -142,7 +139,6 @@ def get_citibike_data(start_date="04/2021", end_date="10/2022") -> pd.DataFrame:
     if start_year == end_year:
         for month in range(int(start_month), int(end_month) + 1):
             df_res =  update_month_data(df_res, month, start_year)
-
     else:
         for month in range(int(start_month), 12 + 1):
             df_res =  update_month_data(df_res, month, start_year)
@@ -155,6 +151,77 @@ def get_citibike_data(start_date="04/2021", end_date="10/2022") -> pd.DataFrame:
 
     return df_res.reset_index(drop=True)
 
+
+###############################################################################
+# Weather parsing
+
+def get_weather_data_from_open_meteo(city_name: str,
+                                     start_date: str,
+                                     end_date: str,
+                                     coordinates: list,
+                                     forecast: bool = False):
+    """
+    Takes city name, coordinates and returns pandas DataFrame with weather data.
+    
+    Examples of arguments:
+        coordinates=(47.755, -122.2806), start_date="2023-01-01"
+    """
+    start_of_cell = time.time()
+    
+    latitude, longitude = coordinates
+    
+    params = {
+        'latitude': latitude,
+        'longitude': longitude,
+        'daily': ["temperature_2m_max", "temperature_2m_min",
+                  "precipitation_sum", "rain_sum", "snowfall_sum",
+                  "precipitation_hours", "windspeed_10m_max",
+                  "windgusts_10m_max", "winddirection_10m_dominant"],
+        'start_date': start_date,
+        'end_date': end_date,
+        'timezone': "Europe/London"
+    }
+    
+    if forecast:
+        # historical forecast endpoint
+        base_url = 'https://api.open-meteo.com/v1/forecast' 
+    else:
+        # historical observations endpoint
+        base_url = 'https://archive-api.open-meteo.com/v1/archive'  
+        
+    try:
+        response = requests.get(base_url, params=params)
+    except ConnectionError:
+        response = requests.get(base_url, params=params)
+    
+    response_json = response.json()    
+    res_df = pd.DataFrame(response_json["daily"])
+    
+    # rename columns
+    res_df = res_df.rename(columns={
+        "time": "date",
+        "temperature_2m_max": "temperature_max",
+        "temperature_2m_min": "temperature_min",
+        "windspeed_10m_max": "wind_speed_max",
+        "winddirection_10m_dominant": "wind_direction_dominant",
+        "windgusts_10m_max": "wind_gusts_max"
+    })
+    
+    # change columns order
+    res_df = res_df[
+        ['date', 'temperature_max', 'temperature_min',
+         'precipitation_sum', 'rain_sum', 'snowfall_sum',
+         'precipitation_hours', 'wind_speed_max',
+         'wind_gusts_max', 'wind_direction_dominant']
+    ]
+    
+    # convert dates in 'date' column
+    res_df["date"] = pd.to_datetime(res_df["date"])
+    end_of_cell = time.time()
+    print(f"Parsed weather for {city_name} since {start_date} till {end_date}.")
+    print(f"Took {round(end_of_cell - start_of_cell, 2)} sec.\n")
+        
+    return res_df
 
 ################################################################################
 # Data engineering
@@ -205,34 +272,6 @@ def engineer_citibike_features(df):
             df_res = func(df_res, i)
     df_res = df_res.reset_index(drop=True)
     return df_res.sort_values(by=["date", "station_id"]).dropna()
-
-
-###############################################################################
-# Weather parsing
-
-def parse_weather_data(city, start_date, end_date, API_KEY):
-    # yyyy-MM-DD data format
-    formatted_url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{city}/{start_date}/{end_date}?unitGroup=metric&include=days&key={API_KEY}&contentType=csv"
-    return pd.read_csv(formatted_url)
-
-
-def get_weather_data(city, start_date, end_date):
-    API_KEY = os.getenv("WEATHER_API_KEY")
-    # API_KEY = ""
-
-    df_res = parse_weather_data(city, start_date, end_date, API_KEY)
-    # drop redundant columns
-    df_res = df_res.drop(columns=["name", "icon", "stations", "description",
-                                  "sunrise", "sunset", "preciptype",
-                                  "severerisk", "conditions", "moonphase",
-                                  "cloudcover", "sealevelpressure",
-                                  "solarradiation", "winddir", "windgust",
-                                  "uvindex", "solarenergy"])
-
-    df_res = df_res.rename(columns={"datetime": "date"})
-
-    return df_res
-
 
 ###############################################################################
 # Streamlit
